@@ -24,7 +24,9 @@ class FindMissingTranslationStrings extends Command
     protected $signature = 'lost-in-translation:find
                             {locale : The locale to be checked}
                             {--sorted : Sort the values before printing}
-                            {--no-progress : Do not show the progress bar}';
+                            {--no-progress : Do not show the progress bar}
+                            {--location : Print the location of missing translations}
+                            {--json : Print the results in JSON}';
 
     /**
      * The console command description.
@@ -58,6 +60,8 @@ class FindMissingTranslationStrings extends Command
     {
         $baseLocale = config('lost-in-translation.locale');
         $locale = $this->argument('locale');
+        $show_location = $this->option('location');
+        $json_output = $this->option('json');
 
         $missing = $this->findInArray($baseLocale, $locale);
 
@@ -70,14 +74,32 @@ class FindMissingTranslationStrings extends Command
         $this->printErrors($visitor->getErrors(), $this->output->getErrorStyle());
 
         $missing = $missing->merge($visitor->getTranslations())->unique();
+        $locations = $visitor->getLocations();
 
         if ($this->option('sorted')) {
             $missing = $missing->sort();
         }
 
         foreach ($missing as $key) {
-            $this->line(OutputFormatter::escape($key));
+            /** @var ?list<SplFileInfo> $loc */
+            $loc = $show_location ? ($locations[$key] ?? null) : null;
+
+            if (!$json_output) {
+                $this->line(OutputFormatter::escape($key));
+                if ($loc) {
+                    foreach ($loc as $info) {
+                        $this->line('    in ' . $info->getRelativePathname());
+                    }
+                }
+            } else {
+                $this->line(json_encode(array_filter([
+                    'key' => $key,
+                    'locations' => $loc ? array_map(fn (SplFileInfo $i) => $i->getRelativePathname(), $loc) : null,
+                ]), JSON_PRETTY_PRINT));
+            }
         }
+
+        return count($missing) > 0 ? self::FAILURE : self::SUCCESS;
     }
 
     /**

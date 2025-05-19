@@ -3,5 +3,6 @@
 Thumbs.db
 /.idea
 /.vscode
-.phpunit.result.cache
+.phpunit*cache
 composer.lock
+/build/

@@ -18,6 +18,9 @@ class MissingTranslationFileVisitor
     /** @var string[] Buffer for valid arguments. */
     protected $translations = [];
 
+    /** @var SplFileInfo[] */
+    protected $locations = [];
+
     /** @var string[] Buffer for invalid arguments. */
     protected $errors = [];
 
@@ -42,6 +45,7 @@ class MissingTranslationFileVisitor
         foreach ($translationKeys as $key) {
             if (!$this->translator->hasForLocale($key, $this->locale)) {
                 $this->translations[] = $key;
+                $this->locations[$key][] = $file;
             }
         }
     }
@@ -65,9 +69,17 @@ class MissingTranslationFileVisitor
         return array_unique($translationKeys);
     }
 
+    /**
+     * @return array<string, list<SplFileInfo>>
+     */
     public function getTranslations(): array
     {
         return $this->translations;
+    }
+
+    public function getLocations(): array
+    {
+        return $this->locations;
     }
 
     public function getErrors(): array
