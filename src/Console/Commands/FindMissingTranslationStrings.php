@@ -8,6 +8,7 @@ use Countable;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Translation\Translator;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Formatter\OutputFormatter;
@@ -24,7 +25,9 @@ class FindMissingTranslationStrings extends Command
     protected $signature = 'lost-in-translation:find
                             {locale : The locale to be checked}
                             {--sorted : Sort the values before printing}
-                            {--no-progress : Do not show the progress bar}';
+                            {--no-progress : Do not show the progress bar}
+                            {--location : Print the location of missing translations}
+                            {--json : Print the results in JSON}';
 
     /**
      * The console command description.
@@ -58,8 +61,10 @@ class FindMissingTranslationStrings extends Command
     {
         $baseLocale = config('lost-in-translation.locale');
         $locale = $this->argument('locale');
+        $show_location = $this->option('location');
+        $json_output = $this->option('json');
 
-        $missing = $this->findInArray($baseLocale, $locale);
+        [$missing, $locations] = $this->findInArray($baseLocale, $locale);
 
         $files = $this->collectFiles();
 
@@ -70,14 +75,45 @@ class FindMissingTranslationStrings extends Command
         $this->printErrors($visitor->getErrors(), $this->output->getErrorStyle());
 
         $missing = $missing->merge($visitor->getTranslations())->unique();
+        $locations = array_merge_recursive($locations, $visitor->getLocations());
 
         if ($this->option('sorted')) {
             $missing = $missing->sort();
         }
 
-        foreach ($missing as $key) {
-            $this->line(OutputFormatter::escape($key));
+        if ($json_output) {
+            if ($show_location) {
+                $outputFormatter = function (string $key, array $locations) {
+                    $this->line(json_encode([
+                        'key' => $key,
+                        'locations' => $locations,
+                    ], JSON_PRETTY_PRINT));
+                };
+            } else {
+                $outputFormatter = function (string $key) {
+                    $this->line(json_encode($key, JSON_PRETTY_PRINT));
+                };
+            }
+        } else {
+            if ($show_location) {
+                $outputFormatter = function (string $key, array $locations) {
+                    $this->line(OutputFormatter::escape($key));
+                    foreach ($locations as $location) {
+                        $this->line("\tin " . $location);
+                    }
+                };
+            } else {
+                $outputFormatter = function (string $key) {
+                    $this->line(OutputFormatter::escape($key));
+                };
+            }
         }
+
+        foreach ($missing as $key) {
+            $outputFormatter($key, isset($locations[$key]) ? $locations[$key] : []);
+        }
+
+        return self::SUCCESS;
     }
 
     /**
@@ -128,24 +164,51 @@ class FindMissingTranslationStrings extends Command
     /**
      * @param string $baseLocale
      * @param mixed $locale
-     * @return \Illuminate\Support\Collection
+     * @return array
      */
     protected function findInArray(string $baseLocale, mixed $locale)
     {
         if ($baseLocale === $locale) {
-            return Collection::empty();
+            return [Collection::empty(), []];
         }
-        return Collection::make($this->files->files(lang_path($baseLocale)))
-            ->mapWithKeys(function (SplFileInfo $file) {
-                return [$file->getFilenameWithoutExtension() => $this->translator->get($file->getFilenameWithoutExtension())];
-            })
-            ->dot()
-            ->keys()
-            ->filter(function ($key) use ($locale) {
-                return !$this->translator->hasForLocale($key, $locale);
-            });
-    }
 
+        $data = Collection::make([]);
+        $locations = [];
+        $translator = $this->translator;
+
+        if ($this->files->exists(lang_path($baseLocale . '.json'))) {
+            $data = $data->merge(
+                Collection::make($this->translator->get('*'))
+                    ->each(static function ($item, string $key) use ($baseLocale, &$locations) {
+                        $locations[$key][] = 'lang/'. $baseLocale .'.json';
+                    })
+            );
+        }
+
+        if ($this->files->exists(lang_path($baseLocale))) {
+            $data = $data->merge(
+                Collection::make($this->files->files(lang_path($baseLocale)))
+                    ->mapWithKeys(static function (SplFileInfo $file) use ($translator) {
+                        $tmp = Arr::dot([
+                            $file->getFilenameWithoutExtension() => $translator->get($file->getFilenameWithoutExtension())
+                        ]);
+
+                        return array_combine(array_keys($tmp), array_fill(0, count($tmp), $file));
+                    })
+                    ->each(static function (SplFileInfo $file, string $key) use ($baseLocale, &$locations) {
+                        $locations[$key][] = 'lang/' . $baseLocale . '/' . $file->getRelativePathname();
+                    })
+            );
+        }
+
+        return [
+            $data->keys()
+                ->filter(static function ($key) use ($locale, $translator) {
+                    return !$translator->hasForLocale($key, $locale);
+                }),
+            $locations,
+        ];
+    }
     /**
      * @return mixed
      */
