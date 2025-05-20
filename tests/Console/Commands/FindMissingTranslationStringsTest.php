@@ -16,8 +16,13 @@ class FindMissingTranslationStringsTest extends TestCase
             ->artisan('lost-in-translation:find ja --no-progress --sorted');
 
         $output = Artisan::output();
+        $lines = array_filter(preg_split('/[\r\n]+/', $output));
 
-        $this->assertSame("foobar\nglobal_key\nmessages.namespaced_key\n", $output);
+        $this->assertSame([
+            "foobar",
+            "global_key",
+            "messages.namespaced_key"
+        ], $lines);
         $this->assertSame(0, $exit_code);
     }
 
@@ -28,8 +33,76 @@ class FindMissingTranslationStringsTest extends TestCase
             ->artisan('lost-in-translation:find zh --no-progress --sorted');
 
         $output = Artisan::output();
+        $lines = array_filter(preg_split('/[\r\n]+/', $output));
 
-        $this->assertSame("foobar\nglobal_key\nkey_in_both\nmessages.namespaced_key\n", $output);
+        $this->assertSame([
+            "foobar",
+            "global_key",
+            "key_in_both",
+            "messages.namespaced_key"
+        ], $lines);
+        $this->assertSame(0, $exit_code);
+    }
+
+    public function testWithLocation(): void
+    {
+        $exit_code = $this
+            ->withoutMockingConsoleOutput()
+            ->artisan('lost-in-translation:find ja --no-progress --sorted --location');
+
+        $output = Artisan::output();
+        $lines = array_filter(preg_split('/[\r\n]+/', $output));
+
+        $this->assertSame([
+            "foobar",
+            "\tin sample.blade.php",
+            "global_key",
+            "messages.namespaced_key"
+        ], $lines);
+        $this->assertSame(0, $exit_code);
+    }
+
+    public function testWithJson(): void
+    {
+        $exit_code = $this
+            ->withoutMockingConsoleOutput()
+            ->artisan('lost-in-translation:find ja --no-progress --sorted --json');
+
+        $output = Artisan::output();
+        $lines = array_filter(preg_split('/[\r\n]+/', $output));
+
+        $this->assertSame([
+            '"foobar"',
+            '"global_key"',
+            '"messages.namespaced_key"'
+        ], $lines);
+        $this->assertSame(0, $exit_code);
+    }
+
+    public function testWithJsonAndLocations(): void
+    {
+        $exit_code = $this
+            ->withoutMockingConsoleOutput()
+            ->artisan('lost-in-translation:find ja --no-progress --sorted --json --location');
+
+        $output = Artisan::output();
+        $data = self::naiveParseJsonLines($output);
+
+        $this->assertCount(3, $data);
+        $this->assertSame([
+            [
+                'key' => 'foobar',
+                'locations' => ['sample.blade.php'],
+            ],
+            [
+                "key" => "global_key",
+                "locations" => []
+            ],
+            [
+                "key" => "messages.namespaced_key",
+                "locations" => []
+            ],
+        ], $data);
         $this->assertSame(0, $exit_code);
     }
 
@@ -50,5 +123,31 @@ class FindMissingTranslationStringsTest extends TestCase
                 $appPath . '/resources/views'
             ]);
         });
+    }
+
+    /** @return list<mixed> */
+    static private function naiveParseJsonLines(string $output): array
+    {
+        $lines = array_filter(preg_split('/[\r\n]+/', $output));
+        $buf = '';
+        $data = [];
+        $started = false;
+        foreach ($lines as $line) {
+            if (!$started) {
+                if (trim($line) === '{') {
+                    $started = true;
+                    $buf = $line;
+                }
+            } else {
+                if (trim($line) === "}") {
+                    $data[] = json_decode($buf . $line, JSON_THROW_ON_ERROR);
+                    $started = false;
+                } else {
+                    $buf .= $line;
+                }
+            }
+        }
+
+        return $data;
     }
 }

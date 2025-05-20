@@ -25,7 +25,9 @@ class FindMissingTranslationStrings extends Command
     protected $signature = 'lost-in-translation:find
                             {locale : The locale to be checked}
                             {--sorted : Sort the values before printing}
-                            {--no-progress : Do not show the progress bar}';
+                            {--no-progress : Do not show the progress bar}
+                            {--location : Print the location of missing translations}
+                            {--json : Print the results in JSON}';
 
     /**
      * The console command description.
@@ -59,6 +61,8 @@ class FindMissingTranslationStrings extends Command
     {
         $baseLocale = config('lost-in-translation.locale');
         $locale = $this->argument('locale');
+        $show_location = $this->option('location');
+        $json_output = $this->option('json');
 
         $missing = $this->findInArray($baseLocale, $locale);
 
@@ -71,14 +75,45 @@ class FindMissingTranslationStrings extends Command
         $this->printErrors($visitor->getErrors(), $this->output->getErrorStyle());
 
         $missing = $missing->merge($visitor->getTranslations())->unique();
+        $locations = $visitor->getLocations();
 
         if ($this->option('sorted')) {
             $missing = $missing->sort();
         }
 
-        foreach ($missing as $key) {
-            $this->line(OutputFormatter::escape($key));
+        if ($json_output) {
+            if ($show_location) {
+                $outputFormatter = function (string $key, array $locations) {
+                    $this->line(json_encode([
+                        'key' => $key,
+                        'locations' => $locations,
+                    ], JSON_PRETTY_PRINT));
+                };
+            } else {
+                $outputFormatter = function (string $key) {
+                    $this->line(json_encode($key, JSON_PRETTY_PRINT));
+                };
+            }
+        } else {
+            if ($show_location) {
+                $outputFormatter = function (string $key, array $locations) {
+                    $this->line(OutputFormatter::escape($key));
+                    foreach ($locations as $location) {
+                        $this->line("\tin " . $location);
+                    }
+                };
+            } else {
+                $outputFormatter = function (string $key) {
+                    $this->line(OutputFormatter::escape($key));
+                };
+            }
         }
+
+        foreach ($missing as $key) {
+            $outputFormatter($key, isset($locations[$key]) ? $locations[$key] : []);
+        }
+
+        return self::SUCCESS;
     }
 
     /**
