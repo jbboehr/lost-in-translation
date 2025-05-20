@@ -3,9 +3,9 @@
 namespace CodingSocks\LostInTranslation\Tests\Console\Commands;
 
 use CodingSocks\LostInTranslation\LostInTranslationServiceProvider;
+use CodingSocks\LostInTranslation\Tests\TestCase;
 use Illuminate\Config\Repository;
 use Illuminate\Support\Facades\Artisan;
-use Orchestra\Testbench\TestCase;
 
 class FindMissingTranslationStringsTest extends TestCase
 {
@@ -31,13 +31,6 @@ class FindMissingTranslationStringsTest extends TestCase
 
         $this->assertSame("foobar\nglobal_key\nkey_in_both\nmessages.namespaced_key\n", $output);
         $this->assertSame(0, $exit_code);
-    }
-
-    public function getPackageProviders($app)
-    {
-        return [
-            LostInTranslationServiceProvider::class,
-        ];
     }
 
     public function defineEnvironment($app)
