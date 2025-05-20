@@ -135,11 +135,13 @@ class FindMissingTranslationStrings extends Command
         if ($baseLocale === $locale) {
             return Collection::empty();
         }
+
         return Collection::make($this->files->files(lang_path($baseLocale)))
             ->mapWithKeys(function (SplFileInfo $file) {
                 return [$file->getFilenameWithoutExtension() => $this->translator->get($file->getFilenameWithoutExtension())];
             })
             ->dot()
+            ->merge($this->translator->get('*'))
             ->keys()
             ->filter(function ($key) use ($locale) {
                 return !$this->translator->hasForLocale($key, $locale);
