@@ -132,13 +132,16 @@ class FindMissingTranslationStrings extends Command
      * @return \Illuminate\Support\Collection
      */
     protected function findInArray(string $baseLocale, mixed $locale)
+
     {
         if ($baseLocale === $locale) {
             return Collection::empty();
         }
 
-        $data = Collection::make($this->translator->get('*'))
-            ->merge(
+        $data = Collection::make($this->translator->get('*'));
+
+        if ($this->files->exists(lang_path($baseLocale))) {
+            $data = $data->merge(
                 Arr::dot(
                     Collection::make($this->files->files(lang_path($baseLocale)))
                         ->mapWithKeys(function (SplFileInfo $file) {
@@ -147,13 +150,13 @@ class FindMissingTranslationStrings extends Command
                         ->toArray()
                 )
             );
+        }
 
         return $data->keys()
             ->filter(function ($key) use ($locale) {
                 return !$this->translator->hasForLocale($key, $locale);
             });
     }
-
     /**
      * @return mixed
      */
