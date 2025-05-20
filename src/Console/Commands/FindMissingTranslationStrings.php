@@ -64,7 +64,7 @@ class FindMissingTranslationStrings extends Command
         $show_location = $this->option('location');
         $json_output = $this->option('json');
 
-        $missing = $this->findInArray($baseLocale, $locale);
+        [$missing, $locations] = $this->findInArray($baseLocale, $locale);
 
         $files = $this->collectFiles();
 
@@ -75,7 +75,7 @@ class FindMissingTranslationStrings extends Command
         $this->printErrors($visitor->getErrors(), $this->output->getErrorStyle());
 
         $missing = $missing->merge($visitor->getTranslations())->unique();
-        $locations = $visitor->getLocations();
+        $locations = array_merge_recursive($locations, $visitor->getLocations());
 
         if ($this->option('sorted')) {
             $missing = $missing->sort();
@@ -164,33 +164,50 @@ class FindMissingTranslationStrings extends Command
     /**
      * @param string $baseLocale
      * @param mixed $locale
-     * @return \Illuminate\Support\Collection
+     * @return array
      */
     protected function findInArray(string $baseLocale, mixed $locale)
-
     {
         if ($baseLocale === $locale) {
-            return Collection::empty();
+            return [Collection::empty(), []];
         }
 
-        $data = Collection::make($this->translator->get('*'));
+        $data = Collection::make([]);
+        $locations = [];
+        $translator = $this->translator;
 
-        if ($this->files->exists(lang_path($baseLocale))) {
+        if ($this->files->exists(lang_path($baseLocale . '.json'))) {
             $data = $data->merge(
-                Arr::dot(
-                    Collection::make($this->files->files(lang_path($baseLocale)))
-                        ->mapWithKeys(function (SplFileInfo $file) {
-                            return [$file->getFilenameWithoutExtension() => $this->translator->get($file->getFilenameWithoutExtension())];
-                        })
-                        ->toArray()
-                )
+                Collection::make($this->translator->get('*'))
+                    ->each(static function ($item, string $key) use ($baseLocale, &$locations) {
+                        $locations[$key][] = 'lang/'. $baseLocale .'.json';
+                    })
             );
         }
 
-        return $data->keys()
-            ->filter(function ($key) use ($locale) {
-                return !$this->translator->hasForLocale($key, $locale);
-            });
+        if ($this->files->exists(lang_path($baseLocale))) {
+            $data = $data->merge(
+                Collection::make($this->files->files(lang_path($baseLocale)))
+                    ->mapWithKeys(static function (SplFileInfo $file) use ($translator) {
+                        $tmp = Arr::dot([
+                            $file->getFilenameWithoutExtension() => $translator->get($file->getFilenameWithoutExtension())
+                        ]);
+
+                        return array_combine(array_keys($tmp), array_fill(0, count($tmp), $file));
+                    })
+                    ->each(static function (SplFileInfo $file, string $key) use ($baseLocale, &$locations) {
+                        $locations[$key][] = 'lang/' . $baseLocale . '/' . $file->getRelativePathname();
+                    })
+            );
+        }
+
+        return [
+            $data->keys()
+                ->filter(static function ($key) use ($locale, $translator) {
+                    return !$translator->hasForLocale($key, $locale);
+                }),
+            $locations,
+        ];
     }
     /**
      * @return mixed

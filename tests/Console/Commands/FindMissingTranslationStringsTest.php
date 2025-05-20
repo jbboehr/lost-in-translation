@@ -57,7 +57,9 @@ class FindMissingTranslationStringsTest extends TestCase
             "foobar",
             "\tin sample.blade.php",
             "global_key",
-            "messages.namespaced_key"
+            "\tin lang/en.json",
+            "messages.namespaced_key",
+            "\tin lang/en/messages.php",
         ], $lines);
         $this->assertSame(0, $exit_code);
     }
@@ -96,11 +98,11 @@ class FindMissingTranslationStringsTest extends TestCase
             ],
             [
                 "key" => "global_key",
-                "locations" => []
+                "locations" => ['lang/en.json'],
             ],
             [
                 "key" => "messages.namespaced_key",
-                "locations" => []
+                "locations" => ['lang/en/messages.php'],
             ],
         ], $data);
         $this->assertSame(0, $exit_code);
